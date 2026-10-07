@@ -1,0 +1,16 @@
+services:
+  - type: web
+    name: validador-cnab
+    runtime: node
+    plan: free
+    buildCommand: cd client && npm install --include=dev && npm run build && cd ../server && npm install
+    startCommand: cd server && npm start
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      # Quando tiver a API real de validação, descomente e preencha (ou configure no painel do Render):
+      # - key: VALIDATION_API_URL
+      #   value: https://sua-api/validate
+      # - key: VALIDATION_API_TOKEN
+      #   sync: false
