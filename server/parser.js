@@ -27,14 +27,14 @@ export function parseCnab(buffer, layout = LAYOUT) {
     const lineNumber = idx + 1;
     const type = slice(line, layout.recordType);
 
-    if (line.length !== firstLen) {
-      result.fileErrors.push({
-        code: 'LINHA_TAMANHO_DIVERGENTE',
-        line: lineNumber,
-        message: `Linha ${lineNumber} tem ${line.length} caracteres (esperado ${firstLen}).`,
-        suggestion: 'Corrija o preenchimento dos campos dessa linha para manter o tamanho fixo.'
-      });
-    }
+    // if (line.length !== firstLen) {
+    //   result.fileErrors.push({
+    //     code: 'LINHA_TAMANHO_DIVERGENTE',
+    //     line: lineNumber,
+    //     message: `Linha ${lineNumber} tem ${line.length} caracteres (esperado ${firstLen}).`,
+    //     suggestion: 'Corrija o preenchimento dos campos dessa linha para manter o tamanho fixo.'
+    //   });
+    // }
 
     if (type === layout.recordTypes.header) {
       result.header = { line: lineNumber };
