@@ -5,6 +5,7 @@ import express from 'express';
 import cors from 'cors';
 import multer from 'multer';
 import { parseCnab } from './parser.js';
+import { validateHeader, validateBeneficiary } from './headerValidation.js';
 import { mockApi } from './mockApi.js';
 
 const PORT = process.env.PORT || 3001;
@@ -45,6 +46,10 @@ app.post('/api/validate', upload.single('file'), async (req, res) => {
 
   const parsed = parseCnab(req.file.buffer);
 
+  // Validações prévias (locais): header no layout Itaú e dados da nossa empresa (fundo).
+  const headerResult = parsed.header ? validateHeader(parsed.header) : null;
+  const headerFund = headerResult?._fund || null;
+
   let apiResults = [];
   try {
     if (parsed.records.length > 0) apiResults = await callValidationApi(parsed.records);
@@ -54,14 +59,16 @@ app.post('/api/validate', upload.single('file'), async (req, res) => {
 
   const byLine = new Map(apiResults.map((r) => [r.line, r.errors || []]));
   const records = parsed.records.map((r) => {
-    const errors = byLine.get(r.line) || [];
+    const errors = [...validateBeneficiary(r.fields, headerFund), ...(byLine.get(r.line) || [])];
     return { line: r.line, ...r.fields, status: errors.length ? 'error' : 'ok', errors };
   });
 
   const invalid = records.filter((r) => r.status === 'error').length;
+  const header = headerResult ? (({ _fund, ...rest }) => rest)(headerResult) : null;
   res.json({
     fileName: req.file.originalname,
     fileErrors: parsed.fileErrors,
+    header,
     summary: { total: records.length, valid: records.length - invalid, invalid },
     records
   });

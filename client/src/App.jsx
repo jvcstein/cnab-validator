@@ -11,6 +11,59 @@ const FIELD_LABELS = {
 };
 const COLUMNS = Object.keys(FIELD_LABELS);
 
+// Campos que aparecem apenas na explicação do erro (não são colunas da tabela)
+const ERROR_LABELS = {
+  ...FIELD_LABELS,
+  beneficiarioTipo: 'Tipo de inscrição da empresa',
+  beneficiarioCnpj: 'CNPJ da empresa',
+  beneficiarioAgencia: 'Agência da empresa',
+  beneficiarioConta: 'Conta da empresa',
+  beneficiarioDac: 'DAC da conta',
+  carteiraNumero: 'Carteira',
+  bancoDetalhe: 'Código do banco',
+  sacadoTipo: 'Tipo de inscrição do sacado'
+};
+
+function HeaderCard({ header }) {
+  const { ok, fund, info, checks } = header;
+  return (
+    <section className={`headerCard ${ok ? 'ok' : 'bad'}`}>
+      <h2>
+        Cabeçalho do arquivo
+        <span className={`pill ${ok ? 'ok' : 'bad'}`}>{ok ? 'Correto' : 'Com problemas'}</span>
+      </h2>
+      <p className="fundo">
+        {fund ? (
+          <>
+            <strong>{fund.nome}</strong> · Agência {fund.agencia} · Conta {fund.conta} · Carteira {fund.carteira}
+          </>
+        ) : (
+          <strong>Fundo não identificado pela agência/conta do cabeçalho</strong>
+        )}
+      </p>
+      <p className="muted small">
+        Empresa: {info.empresa || '—'} · Banco: {info.banco || '—'} · Gerado em {info.dataGeracao || '—'}
+      </p>
+      <details open={!ok}>
+        <summary>{ok ? 'Ver conferências' : 'Conferências do cabeçalho'}</summary>
+        <ul className="checks">
+          {checks.map((c) => (
+            <li key={c.id} className={c.ok ? 'ok' : 'bad'}>
+              <span className="mark">{c.ok ? '✓' : '✕'}</span>
+              <strong>{c.label}</strong> <span className="muted">{c.found}</span>
+              {!c.ok && (
+                <div className="hint">
+                  Esperado: {c.expected}. 💡 {c.suggestion}
+                </div>
+              )}
+            </li>
+          ))}
+        </ul>
+      </details>
+    </section>
+  );
+}
+
 export default function App() {
   const [file, setFile] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -97,6 +150,8 @@ export default function App() {
             </div>
           )}
 
+          {result.header && <HeaderCard header={result.header} />}
+
           <div className="summary">
             <div className="card"><span>{result.summary.total}</span>Registros</div>
             <div className="card ok"><span>{result.summary.valid}</span>Corretos</div>
@@ -135,7 +190,7 @@ export default function App() {
                           <td>{r.line}</td>
                           {COLUMNS.map((c) => (
                             <td key={c} className={errByField[c] ? 'cellError' : ''}>
-                              {r[c] || <em className="muted">vazio</em>}
+                              {r[c] || <em className="muted">{c === 'chaveNota' ? 'não informada' : 'vazio'}</em>}
                             </td>
                           ))}
                         </tr>
@@ -145,7 +200,7 @@ export default function App() {
                               <ul>
                                 {r.errors.map((e, i) => (
                                   <li key={i}>
-                                    <span className="badge">{FIELD_LABELS[e.field] || e.field}</span> {e.message}
+                                    <span className="badge">{ERROR_LABELS[e.field] || e.field}</span> {e.message}
                                     <div className="hint">💡 Como ajustar: {e.suggestion}</div>
                                   </li>
                                 ))}

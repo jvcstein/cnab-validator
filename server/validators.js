@@ -47,6 +47,11 @@ const VALID_DDDS = new Set([
   51,53,54,55,61,62,63,64,65,66,67,68,69,71,73,74,75,77,79,81,82,83,84,85,86,87,88,89,91,92,93,94,95,96,97,98,99
 ]);
 
+// Códigos de UF usados na chave de acesso (IBGE)
+const VALID_UF_CODES = new Set([
+  11, 12, 13, 14, 15, 16, 17, 21, 22, 23, 24, 25, 26, 27, 28, 29, 31, 32, 33, 35, 41, 42, 43, 50, 51, 52, 53
+]);
+
 export const validators = {
   sacadoNome(v) {
     if (!v) return err('NOME_VAZIO', 'Nome do sacado não informado.', 'Preencha o nome/razão social do sacado no cadastro e gere o arquivo novamente.');
@@ -55,14 +60,20 @@ export const validators = {
     return null;
   },
 
+  // Itaú: posições 219-220 = tipo (01 CPF / 02 CNPJ); 221-234 = número com 14 posições, zeros à esquerda.
   sacadoDoc(v, fields) {
-    const digits = onlyDigits(v);
-    if (!digits) return err('DOC_VAZIO', 'CNPJ do sacado não informado.', 'Preencha o CNPJ do sacado no cadastro.');
-    if (fields.sacadoTipo === '01') {
-      return isValidCpf(digits) ? null : err('CPF_INVALIDO', 'CPF do sacado inválido.', 'Confira os 11 dígitos do CPF no cadastro do sacado.');
+    const d = onlyDigits(v);
+    const tipo = fields.sacadoTipo;
+    if (tipo !== '01' && tipo !== '02') {
+      return err('DOC_TIPO_INVALIDO', `Tipo de inscrição do sacado "${tipo || '(vazio)'}" inválido; use 01 (CPF) ou 02 (CNPJ).`, 'Preencha as posições 219 e 220 com 01 para CPF ou 02 para CNPJ.');
     }
-    const cnpj = digits.length > 14 ? digits.slice(-14) : digits.padStart(14, '0');
-    if (!isValidCnpj(cnpj)) return err('CNPJ_INVALIDO', 'CNPJ do sacado inválido (dígitos verificadores não conferem).', 'Confira o CNPJ no cadastro do sacado ou consulte a Receita Federal.');
+    if (!d || /^0+$/.test(d)) {
+      return err('DOC_VAZIO', tipo === '01' ? 'CPF do sacado não informado.' : 'CNPJ do sacado não informado.', 'Preencha o documento do sacado no cadastro.');
+    }
+    if (tipo === '01') {
+      return isValidCpf(d.slice(-11)) ? null : err('CPF_INVALIDO', 'CPF do sacado inválido.', 'Confira os 11 dígitos do CPF no cadastro do sacado.');
+    }
+    if (!isValidCnpj(d.padStart(14, '0'))) return err('CNPJ_INVALIDO', 'CNPJ do sacado inválido (dígitos verificadores não conferem).', 'Confira o CNPJ no cadastro do sacado ou consulte a Receita Federal.');
     return null;
   },
 
@@ -80,7 +91,8 @@ export const validators = {
   nossoNumero(v) {
     if (!v) return err('NOSSO_NUM_VAZIO', 'Nosso número não informado.', 'Gere o nosso número no sistema de cobrança antes de montar o arquivo.');
     if (!/^\d+$/.test(v)) return err('NOSSO_NUM_NAO_NUMERICO', 'Nosso número deve conter apenas dígitos.', 'Remova letras, espaços ou símbolos do nosso número.');
-    if (/^0+$/.test(v)) return err('NOSSO_NUM_ZERADO', 'Nosso número zerado.', 'Informe um nosso número válido.');
+    if (v.length !== 8) return err('NOSSO_NUM_TAMANHO', `Nosso número com ${v.length} dígitos; o Itaú exige 8 (posições 63 a 70).`, 'Complete com zeros à esquerda até 8 dígitos.');
+    if (/^0+$/.test(v)) return err('NOSSO_NUM_ZERADO', 'Nosso número zerado (carteira 109 é direta: o nosso número é informado pela empresa).', 'Informe um nosso número válido, dentro da faixa definida pelo Itaú.');
     return null;
   },
 
@@ -90,11 +102,28 @@ export const validators = {
     return null;
   },
 
-  chaveNota(v) {
-    if (!v) return err('CHAVE_VAZIA', 'Chave da nota não informada.', 'Informe a chave de acesso de 44 dígitos da NF-e.');
-    const d = onlyDigits(v);
-    if (d.length !== 44) return err('CHAVE_TAMANHO', `Chave da nota com ${d.length} dígitos; esperado 44.`, 'Copie a chave de acesso completa do XML ou DANFE da nota.');
-    if (!isValidChaveNfe(d)) return err('CHAVE_DV_INVALIDO', 'Chave da nota inválida (dígito verificador não confere).', 'Confira a chave no XML da NF-e; pode haver dígito trocado ou faltando.');
+  // A chave da nota é OPCIONAL: em branco (ou só zeros) é aceita.
+  // Quando informada, precisa ser uma chave de 44 dígitos válida e o número da nota que ela
+  // contém (posições 26-34) precisa bater com o "seu número" do título.
+  chaveNota(v, fields) {
+    if (!v || /^[0\s]*$/.test(v)) return null;
+    if (/\D/.test(v)) return err('CHAVE_NAO_NUMERICA', 'Chave da nota contém caracteres que não são dígitos.', 'A chave de acesso tem apenas os 44 dígitos, sem espaços, pontos ou letras.');
+    if (v.length !== 44) return err('CHAVE_TAMANHO', `Chave da nota com ${v.length} dígitos; esperado 44.`, 'Copie a chave de acesso completa do XML ou DANFE da nota, ou deixe o campo em branco.');
+    if (!VALID_UF_CODES.has(Number(v.slice(0, 2)))) return err('CHAVE_UF_INVALIDA', `Chave da nota com código de UF ${v.slice(0, 2)} inválido.`, 'Confira a chave no XML da NF-e; os 2 primeiros dígitos são o código da UF do emitente.');
+    const mes = Number(v.slice(4, 6));
+    if (mes < 1 || mes > 12) return err('CHAVE_DATA_INVALIDA', `Chave da nota com mês de emissão ${v.slice(4, 6)} inválido.`, 'Confira a chave no XML da NF-e; os dígitos 3 a 6 são o ano e o mês de emissão (AAMM).');
+    if (!isValidChaveNfe(v)) return err('CHAVE_DV_INVALIDO', 'Chave da nota inválida (dígito verificador não confere).', 'Confira a chave no XML da NF-e; pode haver dígito trocado.');
+
+    const seu = fields?.seuNumero || '';
+    if (seu) {
+      const nNF = Number(v.slice(25, 34));
+      const confere = (seu.match(/\d+/g) || []).some((n) => Number(n) === nNF);
+      if (!confere) {
+        return err('CHAVE_SEU_NUMERO_DIVERGENTE',
+          `A chave é da nota nº ${nNF}, mas o seu número é "${seu}".`,
+          `O seu número deve conter o número da nota (${nNF}). Corrija o seu número ou a chave.`);
+      }
+    }
     return null;
   },
 
